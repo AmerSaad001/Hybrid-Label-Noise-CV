@@ -1,0 +1,15 @@
+dataset: cifar10
+noise: asymmetric
+noise_rate: 0.2
+mode: structural
+epochs: 200
+batch_size: 128
+lr: 0.1
+warmup_epochs: 5
+warmup_lr: 0.02
+structural_weight: 2.0
+structural_start_epoch: 10
+structural_k: 10
+structural_temperature: 0.5
+agreement_min_weight: 0.7
+agreement_max_weight: 1.3
