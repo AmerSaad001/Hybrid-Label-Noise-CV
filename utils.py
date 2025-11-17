@@ -54,9 +54,8 @@ def save_checkpoint(state: dict, path: str):
     torch.save(state, path)
 
 
-# ------------------------------------------------------
+
 # 6. Average meter (for losses, accuracies, etc.)
-# ------------------------------------------------------
 class AverageMeter:
     def __init__(self):
         self.reset()
