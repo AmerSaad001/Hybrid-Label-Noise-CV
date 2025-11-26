@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 
-# --- 1. Define the Encoder ---
+# 1. Define the Encoder 
 class Encoder(nn.Module):
     def __init__(self, emb_dim=128):
         super(Encoder, self).__init__()
@@ -23,7 +23,7 @@ class Encoder(nn.Module):
         h = self.flattener(h)
         return h
 
-# --- 2. Define the Projection Head ---
+# 2. Define the Projection Head 
 class ProjectionHead(nn.Module):
     def __init__(self, in_features, hidden_dim, out_features):
         super(ProjectionHead, self).__init__()
@@ -39,7 +39,7 @@ class ProjectionHead(nn.Module):
         z = self.projector(x)
         return z
 
-# --- 3. Combine into SimCLR Model ---
+# 3. Combine into SimCLR Model 
 class SimCLR_Model(nn.Module):
     def __init__(self, encoder, projection_head):
         super(SimCLR_Model, self).__init__()
