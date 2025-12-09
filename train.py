@@ -210,7 +210,7 @@ def build_model_and_optim(cfg, device):
 # ------------------------------------------------------
 # One training epoch
 # ------------------------------------------------------
-def train_one_epoch(epoch, model, train_loader, optimizer, device, cfg):
+def train_one_epoch(epoch, model, train_loader, optimizer, device, cfg, weights=None):
     model.train()
 
     mode = cfg["mode"]
@@ -225,7 +225,14 @@ def train_one_epoch(epoch, model, train_loader, optimizer, device, cfg):
     # keep CE per sample so we can re-weight it
     ce_crit = nn.CrossEntropyLoss(reduction="none")
 
-    for imgs, labels in train_loader:
+    for batch in train_loader:
+        if len(batch) == 2:
+            imgs, labels = batch
+        elif len(batch) == 3:
+            imgs, labels, indices = batch
+        else:
+            raise ValueError(f"Unexpected batch format: {len(batch)}")
+
         imgs = imgs.to(device)
         labels = labels.to(device)
 
@@ -236,8 +243,11 @@ def train_one_epoch(epoch, model, train_loader, optimizer, device, cfg):
 
         # cross-entropy for each sample
         ce_per_sample = ce_crit(logits, labels)
-        # default weights = 1 (no agreement weighting)
-        weights = torch.ones_like(ce_per_sample, device=device)
+        # default weights = 1 (no agreement weighting) unless provided
+        if weights is None:
+            sample_weights = torch.ones_like(ce_per_sample, device=device)
+        else:
+            sample_weights = torch.as_tensor(weights, device=device, dtype=ce_per_sample.dtype)
 
         # structural / hybrid extra loss
         cons_loss = torch.tensor(0.0, device=device)
@@ -256,13 +266,14 @@ def train_one_epoch(epoch, model, train_loader, optimizer, device, cfg):
 
             # agreement-aware weighting only for hybrid
             if mode == "hybrid" and conf_th is not None and conf_th > 0:
-                weights = compute_agreement_weights(
+                agreement_weights = compute_agreement_weights(
                     logits.detach(), labels, neighbor_idx,
                     confidence_threshold=conf_th,
                 )
+                sample_weights = sample_weights * agreement_weights
 
         # weighted CE
-        ce_loss = (ce_per_sample * weights).mean()
+        ce_loss = (ce_per_sample * sample_weights).mean()
         total_loss = ce_loss + lam_cons * cons_loss
 
         total_loss.backward()
@@ -279,7 +290,7 @@ def train_one_epoch(epoch, model, train_loader, optimizer, device, cfg):
         f"Cons={cons_meter.avg:.4f} Acc={acc_meter.avg*100:.2f}%"
     )
 
-    return ce_meter.avg, cons_meter.avg, acc_meter.avg
+    return ce_meter.avg, acc_meter.avg
 
 
 # ------------------------------------------------------
@@ -393,7 +404,6 @@ def main():
         writer.writerow([
             "epoch",
             "train_ce",
-            "train_consistency",
             "train_acc",
             "val_ce",
             "val_acc",
@@ -412,7 +422,7 @@ def main():
                 weight_decay=5e-4,
             )
 
-        train_ce, train_cons, train_acc = train_one_epoch(
+        train_ce, train_acc = train_one_epoch(
             epoch, model, train_loader, optimizer, device, cfg
         )
 
@@ -430,7 +440,6 @@ def main():
             writer.writerow([
                 epoch,
                 train_ce,
-                train_cons,
                 train_acc,
                 val_ce,
                 val_acc,

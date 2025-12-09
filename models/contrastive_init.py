@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 from torchvision.models import resnet18
 
-from ..utils import log
+from utils import log
 
 
 # ------------------------------------------------
