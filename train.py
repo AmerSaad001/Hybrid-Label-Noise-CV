@@ -87,6 +87,13 @@ def get_args():
     parser.add_argument("--output_dir", type=str, default="outputs",
                         help="where to drop logs/checkpoints")
 
+    parser.add_argument(
+        "--resume_ckpt",
+        type=str,
+        default=None,
+        help="Path to checkpoint (.pth) to resume training from"
+    )
+
     return parser.parse_args()
 
 
@@ -394,22 +401,50 @@ def main():
             weight_decay=5e-4,
         )
 
-    # ---- training loop ----
+    # ---- resume from checkpoint (optional) ----
+    start_epoch = 1
     best_val_acc = 0.0
+
+    if args.resume_ckpt is not None and os.path.isfile(args.resume_ckpt):
+        log(f"Resuming from checkpoint: {args.resume_ckpt}")
+        state = torch.load(args.resume_ckpt, map_location=device)
+        model.load_state_dict(state["state_dict"])
+
+        if "epoch" in state:
+            start_epoch = state["epoch"] + 1
+        if "best_val_acc" in state:
+            best_val_acc = state["best_val_acc"]
+
+    # if warmup already done, make sure backbone is unfrozen and optimizer covers all params
+    if frozen_warm and start_epoch > warmup_epochs + 1:
+        log("[Schedule] Warmup already completed in checkpoint, unfreezing backbone.")
+        for p in model.parameters():
+            p.requires_grad = True
+        optimizer = optim.SGD(
+            model.parameters(),
+            lr=cfg["lr"],
+            momentum=0.9,
+            weight_decay=5e-4,
+        )
+
+    # ---- training loop ----
     metrics_path = os.path.join(out_dir, "metrics.csv")
 
     # little CSV log, easier to plot later
-    with open(metrics_path, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow([
-            "epoch",
-            "train_ce",
-            "train_acc",
-            "val_ce",
-            "val_acc",
-        ])
+    if start_epoch == 1 or not os.path.exists(metrics_path):
+        with open(metrics_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                "epoch",
+                "train_ce",
+                "train_acc",
+                "val_ce",
+                "val_acc",
+            ])
+    else:
+        log(f"Resuming run, appending to existing metrics file: {metrics_path}")
 
-    for epoch in range(1, cfg["epochs"] + 1):
+    for epoch in range(start_epoch, cfg["epochs"] + 1):
         # unfreeze after warmup if using frozen-warm
         if frozen_warm and epoch == warmup_epochs + 1:
             log("[Schedule] Warmup done, unfreezing backbone.")
@@ -455,6 +490,7 @@ def main():
                     "epoch": epoch,
                     "state_dict": model.state_dict(),
                     "cfg": cfg,
+                    "best_val_acc": best_val_acc,
                 },
                 ckpt_path,
             )
