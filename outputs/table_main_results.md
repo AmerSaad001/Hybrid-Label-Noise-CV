@@ -1,0 +1,9 @@
+| Section | model | peak_val_acc | peak_epoch | final_val_acc_epoch100 |
+| --- | --- | --- | --- | --- |
+| cifar10_clean | baseline | 0.7573 | 50 | 0.6633 |
+| cifar10_clean | structural | 0.7873 | 54 | 0.7660 |
+| cifar10_clean | hybrid | 0.7627 | 99 | 0.7200 |
+| cifar10_clean | contrastive | 0.7340 | 73 | 0.6393 |
+| cifar10n_aggre | baseline | 0.8691 | 79 | 0.8452 |
+| cifar10n_aggre | structural | 0.8753 | 76 | 0.8423 |
+| cifar10n_aggre | hybrid | 0.8664 | 100 | 0.8664 |

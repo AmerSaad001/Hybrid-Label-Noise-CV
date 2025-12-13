@@ -16,44 +16,29 @@ def train_step_hybrid(
     lambda_nc=1.0,
     neighbor_temp=1.0,
 ):
-    """
-    One training step implementing Neighbor-Consistency and Agreement-Conditional Weighting.
-
-    Returns a dict with losses and the features/logits for updating banks.
-    """
-
     model.train()
     images, noisy_labels, indices = batch
     images = images.to(device)
     noisy_labels = noisy_labels.to(device)
     indices = indices.to(device)
 
-    # Forward: model expected to return (logits, features) or (features, proj)
     out = model(images)
     if isinstance(out, tuple) and len(out) == 2:
-        # Heuristic: if first tensor looks like features (shape B x D) and second like proj,
-        # we'll try detect if any is logits by checking second dim size later.
         a, b = out
-        # If b has same dim as classes is unknown; we expect the user test model to return (logits, features)
-        # Here assume model returns (logits, features)
         logits, features = a, b
     else:
-        # single output: assume logits
         logits = out
-        # for features fallback, use logits as features
         features = logits
 
     logits = logits.to(device)
     features = features.to(device)
     B, C = logits.shape
 
-    # Classification loss per-sample
     cls_losses = criterion_cls(logits, noisy_labels)
 
     probs = F.softmax(logits, dim=1)
     max_confidence, model_pred = torch.max(probs, dim=1)
 
-    # Normalize features and bank for cosine similarity
     feat = F.normalize(features, dim=1)
     bank = F.normalize(feature_bank.to(device), dim=1)
 

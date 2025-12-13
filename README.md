@@ -1,95 +1,26 @@
-# Hybrid Learning Against Label Noise
+Hybrid Learning Against Label Noise
 
-This repository implements the Hybrid Learning Against Label Noise (HLALN) recipe that mixes four ingredients:
+This repository trains image classifiers on noisy labels using four variants: a supervised baseline, a structural method with neighbor consistency, a hybrid method combining consistency and agreement-aware weighting, and a contrastive-init option that can reuse SimCLR/ImageNet-initialized backbones. Models use ResNet-18 adapted for CIFAR.
 
-1. **Baseline supervised classifier** (ResNet-18 tailored for CIFAR).
-2. **Contrastive pretraining** with SimCLR-style augmentations.
-3. **Structural consistency** enforced with a KNN memory bank.
-4. **Hybrid agreement-aware weighting** to down-weight uncertain labels.
+Methods
+- Baseline
+- Structural
+- Hybrid
+- Contrastive-init
 
-The codebase supports CIFAR-10 with synthetic noise (symmetric/asymmetric) and CIFAR-10N real noise variants such as `aggre`, `worst`, and the `random*` splits.
+Datasets
+- CIFAR-10 (clean or synthetic symmetric/asymmetric noise)
+- CIFAR-10N (AGGRE), UCSC-REAL
 
-## Project structure
+Train
+- CIFAR-10 clean baseline (example): `python3 train.py --dataset cifar10 --mode baseline --noise clean`
+- CIFAR-10N AGGRE hybrid (example): `python3 train.py --dataset cifar10n --subset aggre --mode hybrid`
+- Key options: `--config <yaml>` to load a preset, `--batch_size`, `--epochs`, `--lr`, `--subset_fraction` (e.g., 0.3 for 30%).
 
-```
-labelnoise_hybrid/
-├── configs/                # Ready-to-use experiment presets
-├── data/                   # CIFAR data + CIFAR-10N labels (downloaded automatically)
-├── labelnoise/             # Dataset + noise helpers
-├── models/                 # ResNet, contrastive pretrainer, neighbor bank
-├── outputs/                # Checkpoints, logs, plots
-├── train.py                # Main training entrypoint
-├── eval.py                 # Checkpoint evaluation (accuracy + confusion matrix)
-├── plots.py                # Aggregate metrics + embedding visualizations
-└── utils.py                # Common utilities (seed, logging, metrics)
-```
+Evaluate
+- `python3 eval.py --checkpoint <path> --dataset {cifar10|cifar10n} --subset aggre --noise clean`
+- Use `--save_dir` to write confusion matrix, predictions, and labels.
 
-## Installation
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-## Training
-
-Example: baseline clean CIFAR-10 for a single epoch (quick smoke test):
-
-```bash
-python3 train.py --epochs 1 --dataset cifar10 --noise clean --mode baseline
-```
-
-Key arguments:
-
-- `--dataset {cifar10,cifar10n}` and `--noise {clean,symmetric,asymmetric}` (noise rate via `--noise_rate`).
-- `--mode {baseline,contrastive,structural,hybrid}` toggles the learning recipe.
-- `--config configs/hybrid.yaml` loads a YAML preset (CLI overrides still apply).
-- `--contrastive_checkpoint path/to/backbone.pt` reuses a pre-trained encoder.
-
-During training the script writes `outputs/<exp_name>/history.csv`, `best.ckpt`, `last.ckpt`, and (for contrastive modes) `contrastive_backbone.pt`.
-
-## Evaluation
-
-Evaluate a checkpoint and dump predictions/confusion matrix:
-
-```bash
-python3 eval.py --checkpoint outputs/baseline_clean/best.ckpt --dataset cifar10 --noise clean
-```
-
-Use `--save_dir` to persist `confusion_matrix.npy`, `preds.npy`, and `labels.npy`.
-
-## Plotting + embeddings
-
-Combine multiple history files (or a summary CSV) and optionally visualize embeddings:
-
-```bash
-python3 plots.py --history_files outputs/*/history.csv \
-                 --checkpoint outputs/hybrid_run/best.ckpt \
-                 --dataset cifar10n --subset aggre --split test
-```
-
-Generated figures (saved in `outputs/plots/` by default):
-
-- `accuracy_vs_noise.png`: accuracy curves per mode vs noise rate.
-- `mode_bar.png`: bar chart comparing modes.
-- `tsne.png` and `umap.png`: 2-D embeddings (UMAP requires `umap-learn`).
-
-## Expected outputs
-
-- **Training**: Console logs every `log_interval` steps, plus CSV metrics and checkpoints.
-- **Evaluation**: Overall accuracy + 10×10 confusion matrix in stdout (and `.npy` files if requested).
-- **Plots**: PNG figures summarizing accuracy trends and embedding spaces.
-
-## Data requirements
-
-- CIFAR-10 downloads automatically (`torchvision.datasets`).
-- CIFAR-10N labels must exist under `data/CIFAR-10N/*.npy` (see official repo). The scripts detect missing files and raise a clear error.
-
-## Notes
-
-- The ResNet-18 backbone automatically adapts to 32×32 inputs and falls back to random init if ImageNet weights cannot be retrieved (e.g., offline).
-- Contrastive pretraining uses SimCLR-style InfoNCE with temperature scheduling, storing the resulting backbone for reuse.
-- Structural regularization keeps a KNN memory bank (top-k cosine neighbors) and supports agreement-aware weighting via `agreement_min_weight` / `agreement_max_weight`.
-- Warm starts: `--warmup_epochs` keeps a low LR (`--warmup_lr`) before switching to the main LR, and `--freeze_backbone_epochs` freezes the encoder for the requested number of epochs.
-# Hybrid-Label-Noise-CV
+Tools
+- `tools/plot_learning_curves.py` and `tools/make_report_artifacts.py` generate learning-curve figures and tables.
+- `tools/plot_embeddings.py` plots UMAP/t-SNE embeddings from checkpoints (UMAP requires `umap-learn`).
