@@ -1,7 +1,7 @@
-
 import os
 import csv
 import argparse
+import sys
 from datetime import datetime
 
 import numpy as np
@@ -11,8 +11,6 @@ import torch.optim as optim
 import yaml
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import Subset, DataLoader
-import numpy as np
-import torch.serialization
 
 try:
     from numpy.core.multiarray import _reconstruct
@@ -43,53 +41,169 @@ from models.neighbor_consistency import (
     compute_agreement_weights,
 )
 
+_VALID_MODES = {"baseline", "contrastive", "structural", "hybrid"}
+_VALID_DATASETS = {"cifar10", "cifar10n"}
+_VALID_NOISE = {"clean", "symmetric", "asymmetric"}
+_VALID_CIFAR10N_SUBSETS = {"aggre", "worst", "random1", "random2", "random3", "clean"}
+
 def get_args():
     parser = argparse.ArgumentParser(
-        description="Hybrid Learning Against Label Noise"
+        description="Hybrid Learning Against Label Noise",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
-    parser.add_argument("--config", type=str, default=None)
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Path to a YAML config file. CLI flags override config values when provided.",
+    )
 
-    parser.add_argument("--mode", type=str, default=None,
-                        choices=["baseline", "contrastive", "structural", "hybrid"])
-    parser.add_argument("--model", type=str, default=None,
-                        choices=["baseline", "contrastive", "structural", "hybrid"])
-    parser.add_argument("--dataset", type=str, default=None,
-                        choices=["cifar10", "cifar10n"])
-    parser.add_argument("--noise", type=str, default=None,
-                        choices=["clean", "symmetric", "asymmetric"])
-    parser.add_argument("--noise_rate", type=float, default=None)
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default=None,
+        choices=sorted(_VALID_MODES),
+        help="Training mode (also used to select the model).",
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        choices=sorted(_VALID_MODES),
+        help="Alias for --mode (kept for backwards compatibility).",
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default=None,
+        choices=sorted(_VALID_DATASETS),
+        help="Dataset to train on.",
+    )
+    parser.add_argument(
+        "--noise",
+        type=str,
+        default=None,
+        choices=sorted(_VALID_NOISE),
+        help="Synthetic noise type (used for CIFAR-10 only).",
+    )
+    parser.add_argument(
+        "--noise_rate",
+        type=float,
+        default=None,
+        help="Synthetic noise rate in [0, 1] (used for CIFAR-10 only).",
+    )
 
-    parser.add_argument("--cifarn_subset", type=str, default=None,
-                        choices=["aggre", "worst", "random1", "random2", "random3"])
-    parser.add_argument("--subset", type=str, default=None,
-                        choices=["clean", "aggre", "worst", "random1", "random2", "random3"])
+    parser.add_argument(
+        "--cifarn_subset",
+        type=str,
+        default=None,
+        choices=sorted(_VALID_CIFAR10N_SUBSETS - {"clean"}),
+        help="CIFAR-10N noisy label subset to use (preferred flag).",
+    )
+    parser.add_argument(
+        "--subset",
+        type=str,
+        default=None,
+        choices=sorted(_VALID_CIFAR10N_SUBSETS),
+        help="CIFAR-10N noisy label subset to use (legacy flag).",
+    )
 
-    parser.add_argument("--seed", type=int, default=None)
-    parser.add_argument("--epochs", type=int, default=None)
-    parser.add_argument("--batch_size", type=int, default=None)
-    parser.add_argument("--lr", type=float, default=None)
+    parser.add_argument("--seed", type=int, default=None, help="Random seed.")
+    parser.add_argument("--epochs", type=int, default=None, help="Number of training epochs.")
+    parser.add_argument("--batch_size", type=int, default=None, help="Batch size.")
+    parser.add_argument("--lr", type=float, default=None, help="Learning rate.")
 
-    parser.add_argument("--K", type=int, default=None)
-    parser.add_argument("--lambda_consistency", type=float, default=None)
-    parser.add_argument("--confidence_threshold", type=float, default=None)
+    parser.add_argument("--K", type=int, default=None, help="k for kNN neighbors (structural/hybrid).")
+    parser.add_argument(
+        "--lambda_consistency",
+        type=float,
+        default=None,
+        help="Weight for neighbor-consistency loss (structural/hybrid).",
+    )
+    parser.add_argument(
+        "--confidence_threshold",
+        type=float,
+        default=None,
+        help="Confidence threshold for agreement weights (hybrid).",
+    )
 
-    parser.add_argument("--simclr_ckpt", type=str, default=None)
-    parser.add_argument("--contrastive_schedule", type=str, default=None,
-                        choices=["frozen-warm", "low-lr"])
-    parser.add_argument("--warmup_epochs", type=int, default=None)
-    parser.add_argument("--backbone_lr_factor", type=float, default=None)
+    parser.add_argument("--simclr_ckpt", type=str, default=None, help="Path to a SimCLR checkpoint (contrastive/hybrid).")
+    parser.add_argument(
+        "--contrastive_schedule",
+        type=str,
+        default=None,
+        choices=["frozen-warm", "low-lr"],
+        help="How to schedule backbone fine-tuning (contrastive/hybrid).",
+    )
+    parser.add_argument("--warmup_epochs", type=int, default=None, help="Warmup epochs for contrastive schedule.")
+    parser.add_argument("--backbone_lr_factor", type=float, default=None, help="LR multiplier for backbone parameters.")
 
-    parser.add_argument("--use_cosine_lr", action="store_true")
+    parser.add_argument("--use_cosine_lr", action="store_true", help="Use cosine LR schedule.")
 
-    parser.add_argument("--output_dir", type=str, default="outputs")
+    parser.add_argument("--output_dir", type=str, default="outputs", help="Base output directory for runs.")
 
-    parser.add_argument("--resume_ckpt", type=str, default=None)
-    parser.add_argument("--load_pretrained", type=str, default=None)
+    parser.add_argument("--resume_ckpt", type=str, default=None, help="Path to resume checkpoint (unused).")
+    parser.add_argument("--load_pretrained", type=str, default=None, help="Path to pretrained checkpoint (optional).")
 
-    parser.add_argument("--subset_fraction", type=float, default=None)
+    parser.add_argument(
+        "--subset_fraction",
+        type=float,
+        default=None,
+        help="Fraction of train/val data to use (for quick runs).",
+    )
 
     return parser.parse_args()
+
+def _validate_cfg(cfg: dict):
+    dataset = cfg.get("dataset")
+    mode = cfg.get("mode")
+
+    if dataset not in _VALID_DATASETS:
+        raise ValueError(f"Invalid dataset '{dataset}'. Expected one of: {sorted(_VALID_DATASETS)}")
+    if mode not in _VALID_MODES:
+        raise ValueError(f"Invalid mode '{mode}'. Expected one of: {sorted(_VALID_MODES)}")
+
+    if dataset == "cifar10":
+        noise = cfg.get("noise")
+        if noise not in _VALID_NOISE:
+            raise ValueError(f"Invalid noise '{noise}'. Expected one of: {sorted(_VALID_NOISE)}")
+        noise_rate = float(cfg.get("noise_rate", 0.0))
+        if not (0.0 <= noise_rate <= 1.0):
+            raise ValueError(f"--noise_rate must be in [0, 1]. Got {noise_rate}")
+
+    if dataset == "cifar10n":
+        subset = (cfg.get("cifarn_subset") or cfg.get("subset") or "aggre")
+        if subset not in _VALID_CIFAR10N_SUBSETS:
+            raise ValueError(
+                f"Invalid CIFAR-10N subset '{subset}'. Expected one of: {sorted(_VALID_CIFAR10N_SUBSETS)}"
+            )
+
+    epochs = int(cfg.get("epochs"))
+    batch_size = int(cfg.get("batch_size"))
+    lr = float(cfg.get("lr"))
+    if epochs <= 0:
+        raise ValueError(f"--epochs must be > 0. Got {epochs}")
+    if batch_size <= 0:
+        raise ValueError(f"--batch_size must be > 0. Got {batch_size}")
+    if lr <= 0:
+        raise ValueError(f"--lr must be > 0. Got {lr}")
+
+    K = int(cfg.get("K"))
+    if K <= 0:
+        raise ValueError(f"--K must be > 0. Got {K}")
+
+    lam = float(cfg.get("lambda_consistency"))
+    if lam < 0:
+        raise ValueError(f"--lambda_consistency must be >= 0. Got {lam}")
+
+    conf_th = float(cfg.get("confidence_threshold"))
+    if not (0.0 <= conf_th <= 1.0):
+        raise ValueError(f"--confidence_threshold must be in [0, 1]. Got {conf_th}")
+
+    frac = float(cfg.get("subset_fraction", 1.0))
+    if not (0.0 < frac <= 1.0):
+        raise ValueError(f"--subset_fraction must be in (0, 1]. Got {frac}")
 
 def build_config(args):
     cfg = {
@@ -256,8 +370,12 @@ def main():
     args = get_args()
     cfg = build_config(args)
 
-    set_seed(cfg["seed"])
-    np.random.seed(cfg["seed"])
+    _validate_cfg(cfg)
+
+    # Normalize args.seed so downstream code can always rely on it being set.
+    args.seed = cfg["seed"]
+    set_seed(args.seed)
+    np.random.seed(args.seed)
 
     import torch
 
@@ -286,6 +404,8 @@ def main():
             cfg["noise"] = "clean"
 
     os.makedirs("data", exist_ok=True)
+    if os.path.exists(args.output_dir) and not os.path.isdir(args.output_dir):
+        raise ValueError(f"--output_dir must be a directory path. Found a file at: {args.output_dir}")
     os.makedirs(args.output_dir, exist_ok=True)
 
     time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -300,19 +420,35 @@ def main():
     data_root = "data"
 
     if dataset_name == "cifar10n":
-        train_loader, val_loader, test_loader = get_cifar10n_loaders(
-            root=data_root,
-            batch_size=cfg["batch_size"],
-            noise_type=subset_name
-        )
-    elif dataset_name == "cifar10":
-        train_loader, val_loader, test_loader = get_cifar10_loaders(
-            data_root=data_root,
-            batch_size=cfg["batch_size"],
-            noise_type=cfg["noise"],
-            noise_rate=cfg["noise_rate"],
-            seed=cfg["seed"]
-        )
+        noise_path = os.path.join(data_root, "CIFAR-10_human.pt")
+        if not os.path.isfile(noise_path):
+            raise FileNotFoundError(
+                "CIFAR-10N requested but noisy labels file is missing.\n"
+                f"Expected: {noise_path}\n"
+                "Place the CIFAR-10N label file there (or switch --dataset to cifar10)."
+            )
+
+    try:
+        if dataset_name == "cifar10n":
+            train_loader, val_loader, test_loader = get_cifar10n_loaders(
+                root=data_root,
+                batch_size=cfg["batch_size"],
+                noise_type=subset_name,
+            )
+        elif dataset_name == "cifar10":
+            train_loader, val_loader, test_loader = get_cifar10_loaders(
+                data_root=data_root,
+                batch_size=cfg["batch_size"],
+                noise_type=cfg["noise"],
+                noise_rate=cfg["noise_rate"],
+                seed=cfg["seed"],
+            )
+        else:
+            raise ValueError(f"Unknown dataset '{dataset_name}'")
+    except FileNotFoundError as e:
+        raise FileNotFoundError(
+            f"Dataset files are missing or not found under '{data_root}'.\n{e}"
+        ) from None
 
     def make_loader(ds, shuffle, base):
         return DataLoader(
@@ -389,4 +525,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (FileNotFoundError, ValueError) as e:
+        print(f"[ERROR] {e}", file=sys.stderr)
+        raise SystemExit(2)
