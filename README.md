@@ -5,8 +5,6 @@ This repository contains the code, configurations, and experimental outputs for 
 
 The experiments are conducted on CIFAR-10 (clean labels) and CIFAR-10N (human noisy labels, AGGRE) using a shared ResNet-18 backbone and identical optimization settings to isolate the effect of the robustness mechanisms themselves.
 
-Paper (PDF): paper/Hybrid_Learning_Against_Label_Noise.pdf
-
 Deep neural networks trained with standard cross-entropy tend to memorize noisy labels during late training, which degrades generalization. This issue is especially important when labels come from humans, where disagreement often reflects genuine ambiguity rather than random corruption.
 
 In this project, we perform a controlled comparison of four training variants: a supervised baseline using standard cross-entropy, a structural method using neighbor-consistency regularization in representation space, a hybrid method combining structural consistency with agreement-based reweighting, and a contrastive-init variant that uses contrastive-style initialization followed by supervised training.
