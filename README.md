@@ -15,31 +15,26 @@ The baseline method applies standard cross-entropy loss treating observed labels
 
 The repository structure is organized as follows:
 
-Hybrid-CV-Project/
-├── train.py (main training entry point)
-├── eval.py (evaluation utilities)
-├── model.py (ResNet-18 and model components)
-├── hybrid_loss.py (hybrid loss and agreement weighting)
-├── pretrain.py (contrastive-style initialization)
-├── neighbor_consistency.py (structural regularization)
-├── utils/ (shared helpers)
-│   ├── __init__.py
-│   └── reproducibility.py (set_seed utility)
-├── tools/
-│   ├── plot_learning_curves.py
-│   ├── plot_embeddings.py
-│   └── make_report_artifacts.py
-├── outputs/
-│   ├── baseline/
-│   ├── structural/
-│   ├── hybrid/
-│   ├── figures/ (.png)
-│   └── tables/ (.csv, .md)
-├── data/ (ignored datasets)
-├── datasets/ (ignored raw data)
+Repository structure:
+
+Hybrid-Label-Noise-CV/
+├── configs/                # Training and experiment configurations
+├── labelnoise/             # Label noise handling and dataset utilities
+├── models/                 # Model definitions and backbone components
+├── outputs/                # Experimental outputs (curves, figures, tables)
+├── paper/                  # Course report and related materials
+├── tools/                  # Plotting and analysis scripts
+├── utils/                  # Reproducibility and helper utilities
+├── train.py                # Main training entry point
+├── eval.py                 # Evaluation utilities
+├── pretrain.py             # Contrastive-style initialization
+├── hybrid_loss.py          # Hybrid loss and agreement weighting
+├── model.py                # ResNet-18 model wrapper
+├── main.py                 # Experiment launcher
+├── finetune.py             # Fine-tuning utilities
+├── plots.py                # Visualization helpers
 ├── requirements.txt
-├── README.md
-└── .gitignore
+└── README.md
 
 Datasets, checkpoints, and large binaries are intentionally excluded from version control.
 
