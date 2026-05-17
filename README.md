@@ -1,64 +1,106 @@
-Hybrid Learning Against Label Noise  
-Combining Structural Consistency and Contrastive Initialization
+# Hybrid Learning Against Label Noise
+**Combining Structural Consistency and Contrastive Initialization**
 
-This repository contains the code, configurations, and experimental outputs for a course project studying robust learning under label noise in image classification. The project evaluates several practical robustness strategies under a fixed and controlled training pipeline, focusing on real human annotation noise rather than synthetic corruption.
+A controlled comparison of practical robustness strategies for image classification under human label noise, evaluated under a fixed ResNet-18 training pipeline on CIFAR-10 (clean) and CIFAR-10N (human-annotated, AGGRE).
 
-The experiments are conducted on CIFAR-10 (clean labels) and CIFAR-10N (human noisy labels, AGGRE) using a shared ResNet-18 backbone and identical optimization settings to isolate the effect of the robustness mechanisms themselves.
+## 📄 Course Paper
 
-Deep neural networks trained with standard cross-entropy tend to memorize noisy labels during late training, which degrades generalization. This issue is especially important when labels come from humans, where disagreement often reflects genuine ambiguity rather than random corruption.
+**[Hybrid Learning Against Label Noise (PDF)](paper/hybrid-label-noise-cv.pdf)** — full writeup including methods, experimental setup, results, and analysis.
 
-In this project, we perform a controlled comparison of four training variants: a supervised baseline using standard cross-entropy, a structural method using neighbor-consistency regularization in representation space, a hybrid method combining structural consistency with agreement-based reweighting, and a contrastive-init variant that uses contrastive-style initialization followed by supervised training.
+## Overview
 
-All methods use a ResNet-18 backbone, are trained for 100 epochs using SGD, share the same data augmentation, optimizer, and evaluation protocol, and can optionally be run under a 30% subset mode for reproducibility under limited compute.
+Deep neural networks trained with standard cross-entropy tend to memorize noisy labels during late training, degrading generalization. This is especially problematic for human-annotated datasets, where label disagreement often reflects genuine ambiguity rather than random corruption.
 
-The baseline method applies standard cross-entropy loss treating observed labels as ground truth. The structural method adds a neighbor-consistency regularization term that encourages predictions of nearby samples in feature space to be similar, reducing memorization of locally mislabeled examples. The hybrid method combines agreement-based down-weighting of suspicious samples with the same neighbor-consistency regularization used in the structural approach. The contrastive-init method uses contrastive-style initialization of the encoder followed by standard supervised training; no contrastive objective is applied during noisy supervised training.
+This project performs a **controlled comparison of four training variants**, all sharing the same ResNet-18 backbone, optimizer, and augmentation pipeline — so any observed difference can be attributed to the robustness mechanism itself rather than confounding factors.
 
-The repository structure is organized as follows:
+## Methods Compared
 
-Repository structure:
+| Method | Description |
+|---|---|
+| **Baseline** | Standard cross-entropy treating observed labels as ground truth |
+| **Structural** | Adds neighbor-consistency regularization in feature space, encouraging predictions of nearby samples to be similar |
+| **Hybrid** | Combines structural regularization with agreement-based down-weighting of locally inconsistent samples |
+| **Contrastive-init** | Contrastive-style encoder initialization followed by standard supervised training (clean-label diagnostic only) |
 
+## Key Results
+
+| Method | CIFAR-10N (AGGRE) Peak | Epoch | Final (Epoch 100) |
+|---|---|---|---|
+| Baseline | 86.91% | 79 | 84.52% |
+| **Structural** | **87.53%** | 76 | 84.23% |
+| **Hybrid** | 86.64% | 100 | **86.64%** (no decay) |
+
+**Key findings:**
+- Structural neighbor-consistency achieves the highest peak validation accuracy under human label noise
+- Hybrid reweighting eliminates the late-epoch memorization decay observed in baseline training
+- Remaining errors concentrate in visually ambiguous animal classes (dog / cat / horse)
+
+## Repository Structure
 Hybrid-Label-Noise-CV/
-├── configs/                # Training and experiment configurations
-├── labelnoise/             # Label noise handling and dataset utilities
-├── models/                 # Model definitions and backbone components
-├── outputs/                # Experimental outputs (curves, figures, tables)
-├── paper/                  # Course report and related materials
-├── tools/                  # Plotting and analysis scripts
-├── utils/                  # Reproducibility and helper utilities
-├── train.py                # Main training entry point
-├── eval.py                 # Evaluation utilities
-├── pretrain.py             # Contrastive-style initialization
-├── hybrid_loss.py          # Hybrid loss and agreement weighting
-├── model.py                # ResNet-18 model wrapper
-├── main.py                 # Experiment launcher
-├── finetune.py             # Fine-tuning utilities
-├── plots.py                # Visualization helpers
-├── requirements.txt
-└── README.md
+├── configs/         # Training and experiment configurations
+├── labelnoise/      # Label noise handling and dataset utilities
+├── models/          # Model definitions and backbone components
+├── outputs/         # Experimental outputs (curves, figures, tables)
+├── paper/           # Course paper PDF
+├── tools/           # Plotting and analysis scripts
+├── utils/           # Reproducibility and helper utilities
+├── train.py         # Main training entry point
+├── eval.py          # Evaluation utilities
+├── pretrain.py      # Contrastive-style initialization
+├── hybrid_loss.py   # Hybrid loss and agreement weighting
+├── model.py         # ResNet-18 model wrapper
+└── requirements.txt
 
 Datasets, checkpoints, and large binaries are intentionally excluded from version control.
 
-To run the project, first create and activate a virtual environment and install dependencies using:  
-python3 -m venv venv  
-source venv/bin/activate  
+## Getting Started
+
+Create a virtual environment and install dependencies:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
+```
 
-A quick test using a small subset can be run with:  
+**Quick test** (small subset, 1 epoch):
+```bash
 python3 train.py --epochs 1 --dataset cifar10n --subset aggre --subset_fraction 0.01 --model structural
+```
 
-A full experiment example can be run with:  
+**Full experiment**:
+```bash
 python3 train.py --epochs 100 --dataset cifar10n --subset aggre --model hybrid
+```
 
-Training produces learning curves (accuracy and cross-entropy), confusion matrices, UMAP or t-SNE embeddings, and CSV tables for aggregate and per-class accuracy. All outputs are saved under the outputs/ directory.
+Training produces learning curves, confusion matrices, UMAP / t-SNE embeddings, and per-class accuracy tables under `outputs/`.
 
-Evaluation diagnostics are used to interpret why certain robustness strategies perform better, not just how well they perform. Learning curves track both peak and late-epoch behavior, confusion matrices highlight class-level ambiguity, and UMAP or t-SNE visualizations reveal representation geometry under noisy supervision.
+## Evaluation Approach
 
-For reproducibility, all methods share the same architecture, optimizer, and training schedule. Subset mode enables deterministic training under limited compute, and CIFAR-10N evaluation follows the standard protocol using clean test labels.
+Evaluation diagnostics are designed to interpret **why** certain strategies perform better, not just how well:
 
-The project uses CIFAR-10 as the standard image classification benchmark and CIFAR-10N as the human-annotated noisy-label dataset, with the AGGRE label set provided by the UCSC-REAL CIFAR-N repository.
+- **Learning curves** track peak and late-epoch behavior to surface memorization dynamics
+- **Confusion matrices** highlight class-level ambiguity
+- **UMAP / t-SNE visualizations** reveal representation geometry under noisy supervision
 
-Results are primarily reported for a single random seed, subset sampling is not class-stratified, contrastive-init is evaluated strictly as initialization rather than end-to-end contrastive training under noise, and a full noise-rate sweep is proposed as future work.
+## Datasets
 
-Project repository: https://github.com/AmerSaad001/Hybrid-Label-Noise-CV
+- **CIFAR-10** — clean labels, standard image classification benchmark
+- **CIFAR-10N** — human-annotated noisy labels from the [UCSC-REAL CIFAR-N repository](https://github.com/UCSC-REAL/cifar-10-100n) (AGGRE label set used in this project)
 
-This repository accompanies a course project submission and is intended for academic and educational use.
+The CIFAR-N protocol is followed: training on noisy labels, evaluating on clean CIFAR-10 test labels.
+
+## Limitations
+
+- Results reported for a single random seed
+- Subset sampling is not class-stratified
+- Contrastive-init evaluated only as initialization (not end-to-end contrastive training under noise)
+- Full noise-rate sweep proposed as future work
+
+## Tech Stack
+
+`Python` · `PyTorch` · `NumPy` · `Pandas` · `UMAP` · `t-SNE` · `Matplotlib`
+
+---
+
+*This repository accompanies a course project submission and is intended for academic and educational use.*
